@@ -28,16 +28,17 @@ $.Class.extend('Liquid.Ajax',
 
     config: {}, // Optional config object (sent by the server)
     secret: null, // CSRF Token
-    
+
     connected: false,
     connectionHash: null,
     connectionNumber: 0, // Current window/tab number in session
 
     _ajaxCallbackCount: 0, // Callback counter (last callback id)
-    _ajaxCallbacks: {}, // Assoc list of callbacks    
+    _ajaxCallbacks: {}, // Assoc list of callbacks
     _ajaxQueue: [],
     _ajaxDeferred: {},
-    
+    _initRequestSubmitting: false,
+
     _events: {},
 
     init: function (options, events) { // Constructor
@@ -47,12 +48,12 @@ $.Class.extend('Liquid.Ajax',
         this._events = {};
         this.initData = false;
         this.config = {};
-        
+
         $.extend(this, options || {}); // Use optional options arg to extend this object
-        
+
         if(events && typeof events == 'object') {
             for(var i in events) {
-               this.registerEvent(i, events[i]);                
+               this.registerEvent(i, events[i]);
             }
         }
 
@@ -61,16 +62,16 @@ $.Class.extend('Liquid.Ajax',
         } else {
             this.sendInitRequest();
         }
-        
+
         this.triggerEvent('init', [options]);
     },
-    
+
     triggerEvent: function (eventName, params) {
         if(this._events[eventName] && this._events[eventName] instanceof Array) {
             if(!params) {
                 params = [];
             }
-            
+
             for(var i = 0; i < this._events[eventName].length; i++) {
                 if(typeof this._events[eventName][i] == 'function') {
                     this._events[eventName][i].apply(this, params);
@@ -81,11 +82,11 @@ $.Class.extend('Liquid.Ajax',
         }
     },
 
-    registerEvent: function (eventName, callback) {        
+    registerEvent: function (eventName, callback) {
         if(!this._events[eventName] || !this._events[eventName] instanceof Array) {
             this._events[eventName] = [];
         }
-        
+
         this._events[eventName].push(callback);
     },
 
@@ -96,25 +97,28 @@ $.Class.extend('Liquid.Ajax',
             }
 
             this.triggerEvent('log', arguments);
-        }                
+        }
     },
-    
+
     sendInitRequest: function () { // Get initial configuration and channel data from the server
-        var url = this.rpcUrl + '/init';
-        
-        var data = { version: this.version, time: new Date().getTime() };
-    
-        $.ajax({
-            type: 'GET',
-            data: data,
-            url: url,
-            success: this.callback('onInitSuccess'),
-            error: this.callback('onInitError'),
-            dataType: 'json',
-            fixture: this.useFixtures ? steal.root.path + '/fixtures/rpc/init.json' : false
-        });
-        
-        this.triggerEvent('sendInitRequest', [data, url]);
+        if (!this._initRequestSubmitting) {
+            this._initRequestSubmitting = true;
+            var url = this.rpcUrl + '/init';
+
+            var data = { version: this.version, time: new Date().getTime() };
+
+            $.ajax({
+                type: 'GET',
+                data: data,
+                url: url,
+                success: this.callback('onInitSuccess'),
+                error: this.callback('onInitError'),
+                dataType: 'json',
+                fixture: this.useFixtures ? steal.root.path + '/fixtures/rpc/init.json' : false
+            });
+
+            this.triggerEvent('sendInitRequest', [data, url]);
+        }
     },
 
     setDebugMode: function (flag) {
@@ -124,7 +128,7 @@ $.Class.extend('Liquid.Ajax',
         if(this.debugMode) {
             this.log('Debug mode enabled');
         }
-        
+
         this.triggerEvent('setDebugMode', [this.debugMode]);
     },
 
@@ -143,43 +147,39 @@ $.Class.extend('Liquid.Ajax',
         // Extend this, if you expect the config in a different format or want to
         // process the object provided by the server
         this.config = config;
-        
+
         this.triggerEvent('setConfig', [this.config]);
     },
 
     setSecret: function (secret) {
         // This is the CSRF Token (also used for the AJAX Push session broadcast channel name)
         this.secret = secret;
-        
+
         this.triggerEvent('setSecret', [this.secret]);
     },
-    
+
     isConnected: function () {
         return this.connected == true;
     },
-    
+
     isDisconnected: function () {
         return this.connected == false;
     },
-    
+
     onConnected: function () {
-        if(this.connected) return;
-        
         this.connected = true;
-        
+
         if(this._ajaxQueue) {
             // Retry, if calls were made while disconnected
             while(this._ajaxQueue.length > 0) {
                 this.rpc(this._ajaxQueue.shift());
             }
         }
-        
-        this.triggerEvent('onConnected', arguments);    
+
+        this.triggerEvent('onConnected', arguments);
     },
-    
+
     onDisconnected: function () {
-        if(!this.connected) return;
-        
         this.connected = false;
         this.triggerEvent('onDisconnected', arguments);
     },
@@ -187,18 +187,19 @@ $.Class.extend('Liquid.Ajax',
     setConnectionHash: function (hash) {
         // The AJAX Push channel name
         this.connectionHash = hash;
-        
+
         this.triggerEvent('setConnectionHash', [this.connectionHash]);
     },
 
     setConnectionNumber: function (number) {
         // This number increases with each init call and helps to address messages to the right browser window/tab
         this.connectionNumber = number;
-        
+
         this.triggerEvent('setConnectionNumber', [this.connectionNumber]);
     },
 
     onInitSuccess: function (data) { // Success ajax response handler for sendInitRequest()
+        this._initRequestSubmitting = false;
         if(data.version != this.version) {
             this.log('WARNING: Liquid Ajax Server version (' + data.version
                 + ') is different from client version (' + this.version
@@ -215,19 +216,20 @@ $.Class.extend('Liquid.Ajax',
         this.setConnectionNumber(data.connectionNumber);
 
         this.log('Initialization successful');
-        
+
         this.triggerEvent('onInitSuccess', arguments);
-        
+
         this.afterInitSuccess();
     },
-    
+
     afterInitSuccess: function () {
         this.onConnected();
     },
 
     onInitError: function (data) { // Error ajax response handler for sendInitRequest()
+        this._initRequestSubmitting = false;
         this.log('ERROR: Could not get initialization data from Liquid Ajax Server');
-        
+
         this.triggerEvent('onInitError', arguments);
     },
 
@@ -235,7 +237,7 @@ $.Class.extend('Liquid.Ajax',
         // Publishes an AJAX Push Message to other clients or just a local OpenAjax event, in case
         // AJAX Push is not available
         OpenAjax.hub.publish(channel, message);
-        
+
         this.triggerEvent('send', arguments);
     },
 
@@ -276,7 +278,7 @@ $.Class.extend('Liquid.Ajax',
         } else {
             entry.callback(data);
         }
-        
+
         this.triggerEvent('callAjaxCallback', arguments);
     },
 
@@ -304,48 +306,59 @@ $.Class.extend('Liquid.Ajax',
             time: new Date().getTime(),
             callback: callback
         };
-        
+
         this.triggerEvent('addAjaxCallback', [this._ajaxCallbackCount, callback]);
 
         return this._ajaxCallbackCount;
     },
 
     getAjaxCallbackId: function (rpcRequest, deferred) {
-        var successCallbackId = rpcRequest.success ? this.addAjaxCallback(rpcRequest.success) : this.defaultSuccessEvent;
-        var errorCallbackId = rpcRequest.error ? this.addAjaxCallback(rpcRequest.error) : this.defaultErrorEvent;
+        var me = this;
+        var defaultSuccess = function (data) {
+            OpenAjax.hub.publish(me.defaultSuccessEvent, data);
+        };
+        var defaultError = function (data) {
+            OpenAjax.hub.publish(me.defaultErrorEvent, data);
+        };
+        var successCallbackId = rpcRequest.success ? this.addAjaxCallback(rpcRequest.success) : this.addAjaxCallback(defaultSuccess);
+        var errorCallbackId = rpcRequest.error ? this.addAjaxCallback(rpcRequest.error) : this.addAjaxCallback(defaultError);
 
         var key = successCallbackId + ':' + errorCallbackId + ':' + this.connectionNumber;
-        
+
         if(deferred) {
             this._ajaxDeferred[key] = deferred;
         }
-        
+
         return key;
     },
-    
+
     fixture: function(filename, settings, callbackType) {
         var request = jQuery.evalJSON(settings.data);
-        
+
         var params = request.params ? jQuery.toJSON(request.params).replace(/[^a-zA-Z0-9]/g, '') : null;
-        
+
         if(params && params != 'null') {
             params = '/' + params;
         } else {
             params = '';
-        }       
-        
+        }
+
+        if(params.length > 100) {
+            params = params.substr(0,100);
+        }
+
         var urlParts = settings.url.split('/');
-        
+
         var service = urlParts[2].split('?');
-        
+
         var filename = filename ? steal.root.path + filename : steal.root.path + '/fixtures/rpc/' + service[0] + '/' + request.method + params + '.json';
-        
+
         console.log('fixture', filename);
-        
+
         var ids = request.id.split(':');
-        
+
         var result = '';
-        
+
         $.ajax({
             url: filename,
             dataType: 'json',
@@ -353,7 +366,7 @@ $.Class.extend('Liquid.Ajax',
             async: false,
             success: function (fixtureData) {
                 if(!fixtureData) return;
-                
+
                 if(!fixtureData.error && ids[0]) {
                     result = {id: request.id, result: fixtureData.result, error: null}
                 }
@@ -363,7 +376,7 @@ $.Class.extend('Liquid.Ajax',
                 }
             }
         });
-        
+
         var xhr = {
             responseText: JSON.stringify(result)
         }
@@ -379,10 +392,10 @@ $.Class.extend('Liquid.Ajax',
             } else {
                 this.log('RPC call not possible, while disconnected - request was discarded');
             }
-            
+
             return;
         }
-        
+
         var data;
         var url;
         var deferred = this.useDeferred ? $.Deferred() : null;
@@ -411,13 +424,13 @@ $.Class.extend('Liquid.Ajax',
 
             url = this.rpcUrl + '/' + request['service'];
         };
-        
+
         var fixture = false;
-        
+
         if(this.useFixtures && !aggregate) {
             fixture = this.callback('fixture', request.fixture);
         }
-        
+
         var ajaxRequest = {
             type: 'POST',
             url: url + '?t=' + encodeURIComponent(this.secret),
@@ -430,9 +443,9 @@ $.Class.extend('Liquid.Ajax',
         };
 
         var xhr = $.ajax(ajaxRequest);
-        
+
         this.triggerEvent('rpc', [ajaxRequest, xhr]);
-        
+
         return deferred ? deferred.promise() : xhr;
     },
 
@@ -450,35 +463,35 @@ $.Class.extend('Liquid.Ajax',
         } else if(responseData) { // Normal JSON-RPC response
             this.publishRpcResponse(responseData);
         }
-        
+
         this.triggerEvent('onAjaxSuccess', arguments);
     },
 
     onAjaxError: function (deferred, request, data, xhr, options) { // Default AJAX error handler for rpc() (see above)
         if(xhr.status == 401) {
             this.onDisconnected();
-            
+
             if(this.useQueue) {
                 this._ajaxQueue.push(request);
             } else {
                 this.publishRpcResponse({
-                    id: data.id, 
-                    result: null, 
+                    id: data.id,
+                    result: null,
                     error: {"code": -32000, "message": "Unauthorized", "data": xhr}
                 });
             }
-          
+
             this.sendInitRequest();
         } else {
             this.publishRpcResponse({
-                id: data.id, 
-                result: null, 
+                id: data.id,
+                result: null,
                 error: {"code": -32001, "message": "Server error", "data": xhr}
             });
-            
+
             this.log('WARNING: Got unexpected error from server: ', xhr);
         }
-        
+
         this.triggerEvent('onAjaxError', [xhr, options]);
     },
 
@@ -492,29 +505,29 @@ $.Class.extend('Liquid.Ajax',
 
         var parts = response.id.split(':');
         var deferred = this._ajaxDeferred[response.id];
-        
+
         if(response.error) {
             var callbackId = parts[1];
             var data = response.error;
-            
+
             this.triggerEvent('onRpcError', [data]);
             this.deleteAjaxCallback(parts[0]);
-            
+
             if(deferred) {
                 deferred.reject(data);
             }
         } else {
             var callbackId = parts[0];
             var data = response.result;
-            
+
             this.triggerEvent('onRpcSuccess', [data]);
             this.deleteAjaxCallback(parts[1]);
-            
+
             if(deferred) {
                 deferred.resolve(data);
             }
         }
-        
+
         if(deferred) {
             delete this._ajaxDeferred[response.id];
         }
@@ -526,7 +539,7 @@ $.Class.extend('Liquid.Ajax',
         }
 
         this.deleteAjaxCallback(callbackId);
-        
+
         this.triggerEvent('publishRpcResponse', arguments);
     }
 }

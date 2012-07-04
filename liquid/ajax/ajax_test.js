@@ -3,7 +3,7 @@ steal('jquery')
 .then('liquid/ajax')
 .then('funcunit/qunit')
 .then(function(){
-   var initData = {   
+   var initData = {
        "version":1,
        "debugMode":false,
        "developmentMode":false,
@@ -16,22 +16,22 @@ steal('jquery')
 
     module('liquid/ajax');
 
-    asyncTest('Init', function(){   
+    asyncTest('Init', function(){
         expect(1);
         stop(2000);
-        
+
         var fakeUserModel = {
             findCurrent: function () {
                 ok(true, 'findCurrent was called');
                 start();
             }
         }
-        
+
         var Ajax = new Liquid.Ajax(
             {
                 initData: initData,
                 useFixtures: true
-            }, 
+            },
             {
                 init: function () {
                     ok(true, 'init() was called');
@@ -40,36 +40,63 @@ steal('jquery')
             }
         );
     });
-    
-    asyncTest('Success callback', function(){  
+
+    asyncTest('Success callback', function(){
         stop(2000);
         expect(1);
-        
+
         var Ajax = new Liquid.Ajax({
             initData: initData,
             useFixtures: true
         });
 
         Ajax.rpc({
-            'service': 'mock', 
+            'service': 'mock',
             'method': 'success',
             'fixture': 'liquid/fixtures/rpc/success.json',
             success    : function () { ok(true, 'Success callback was called'); start(); },
             error      : function () { ok(false, 'Error callback was called'); start(); }
         });
     });
-    
-    asyncTest('Deferred success callback', function(){  
+
+    asyncTest('Default success callback', function(){
+        stop(2000);
+        expect(1);
+
+        var Ajax = new Liquid.Ajax({
+            initData: initData,
+            useFixtures: true,
+            defaultSuccessEvent: 'Liquid.Ajax.Test.Success',
+            defaultErrorEvent: 'Liquid.Ajax.Test.Error'
+        });
+
+        OpenAjax.hub.subscribe(
+            'Liquid.Ajax.Test.Success',
+            function () {ok(true, 'Success callback was called'); start();
+        });
+        OpenAjax.hub.subscribe(
+            'Liquid.Ajax.Test.Error',
+            function () {ok(false, 'Error callback was called'); start();
+        });
+
+        Ajax.rpc({
+            'service': 'mock',
+            'method': 'success',
+            'fixture': 'liquid/fixtures/rpc/success.json'
+        });
+    });
+
+    asyncTest('Deferred success callback', function(){
         stop(2000);
         expect(2);
-        
+
         var Ajax = new Liquid.Ajax({
             initData: initData,
             useFixtures: true
         });
 
         Ajax.rpc({
-            'service': 'mock', 
+            'service': 'mock',
             'method': 'success',
             'fixture': 'liquid/fixtures/rpc/success.json',
             success    : function () { ok(true, 'Success callback was called');  },
@@ -79,11 +106,11 @@ steal('jquery')
             function () { ok(false, 'Deferred error callback was called'); start(); }
         );
     });
-    
-    asyncTest('Deferred success callback using $.when', function(){  
+
+    asyncTest('Deferred success callback using $.when', function(){
         stop(2000);
         expect(3);
-        
+
         var Ajax = new Liquid.Ajax({
             initData: initData,
             useFixtures: true
@@ -91,14 +118,14 @@ steal('jquery')
 
         $.when(
             Ajax.rpc({
-                'service': 'mock', 
+                'service': 'mock',
                 'method': 'success',
                 'fixture': 'liquid/fixtures/rpc/success.json',
                 success    : function () { ok(true, 'Success callback 1 was called');  },
                 error      : function () { ok(false, 'Error callback 1 was called'); }
             }),
             Ajax.rpc({
-                'service': 'mock', 
+                'service': 'mock',
                 'method': 'success',
                 'fixture': 'liquid/fixtures/rpc/success.json',
                 success    : function () { ok(true, 'Success callback 2 was called');  },
@@ -108,36 +135,61 @@ steal('jquery')
             function () { ok(true, 'Deferred success callback was called'); start(); }
         );
     });
-    
-    asyncTest('Error callback', function(){  
+
+    asyncTest('Deferred success callback without success callbacks using $.when', function(){
         stop(2000);
-        expect(1); 
-        
+        expect(1);
+
+        var Ajax = new Liquid.Ajax({
+            initData: initData,
+            useFixtures: true
+        });
+
+        $.when(
+            Ajax.rpc({
+                'service': 'mock',
+                'method': 'success',
+                'fixture': 'liquid/fixtures/rpc/success.json'
+            }),
+            Ajax.rpc({
+                'service': 'mock',
+                'method': 'success',
+                'fixture': 'liquid/fixtures/rpc/success.json'
+            })
+        ).done(
+            function () { ok(true, 'Deferred success callback was called'); start(); }
+        );
+    });
+
+    asyncTest('Error callback', function(){
+        stop(2000);
+        expect(1);
+
         var Ajax = new Liquid.Ajax({
             initData: initData,
             useFixtures: true
         });
 
         Ajax.rpc({
-            'service': 'mock', 
+            'service': 'mock',
             'method': 'error',
             'fixture': 'liquid/fixtures/rpc/error.json',
             success    : function () { ok(false, 'Success callback was called'); start(); },
             error      : function () { ok(true, 'Error callback was called'); start(); }
         });
     });
-    
-    asyncTest('Deferred error callback', function(){  
+
+    asyncTest('Deferred error callback', function(){
         stop(2000);
-        expect(2); 
-        
+        expect(2);
+
         var Ajax = new Liquid.Ajax({
             initData: initData,
             useFixtures: true
         });
 
         Ajax.rpc({
-            'service': 'mock', 
+            'service': 'mock',
             'method': 'error',
             'fixture': 'liquid/fixtures/rpc/error.json',
             success    : function () { ok(false, 'Success callback was called');  },
